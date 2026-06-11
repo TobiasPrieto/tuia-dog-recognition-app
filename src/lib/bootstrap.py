@@ -11,12 +11,12 @@ from lib.services.classifier_service import ClassifierService
 from lib.services.detection_service import DetectionService
 from lib.services.pipeline_service import PipelineService
 from lib.services.similarity_service import SimilarityService
+from lib.storage.base import EmbeddingStoreProtocol
 from lib.storage.embedding_store import EmbeddingStore
-from lib.storage.pgvector_store import PgVectorEmbeddingStore
 
 logger = logging.getLogger(__name__)
 
-StoreType = Union[EmbeddingStore, PgVectorEmbeddingStore]
+StoreType = Union[EmbeddingStoreProtocol, EmbeddingStore]
 UrlResolver = Callable[[Path], Optional[str]]
 
 
@@ -32,6 +32,10 @@ class ServiceContainer:
 def build_store(settings: Settings) -> StoreType:
     if settings.use_pgvector:
         logger.info("Using PostgreSQL vector store")
+        # Import lazy: psycopg/pgvector solo se requieren con USE_PGVECTOR=true
+        # (permite usar el resto de los servicios en entornos sin postgres, ej: Colab).
+        from lib.storage.pgvector_store import PgVectorEmbeddingStore
+
         return PgVectorEmbeddingStore(
             host=settings.postgres_host,
             port=settings.postgres_port,

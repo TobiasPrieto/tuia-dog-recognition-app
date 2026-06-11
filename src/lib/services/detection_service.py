@@ -8,7 +8,7 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
-from lib.schemas import DetectResult, DogDetection
+from lib.schemas import ClassifyResult, DetectResult, DogDetection
 from lib.services.classifier_service import ClassifierService
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,33 @@ class DetectionService:
     # ------------------------------------------------------------------
     # Orquestacion provista
     # ------------------------------------------------------------------
+
+    def classify_image(
+        self, source_path: str, output_path: Path, model_name: str | None = None
+    ) -> str:
+        """Clasifica la imagen completa con el modelo entrenado (pestaña Etapa 2).
+
+        Reutiliza classify_detected_dog tratando la imagen entera como recorte,
+        por lo que requiere la Etapa 2 (modelo entrenado) y classify_detected_dog.
+        Escribe el resultado como JSON en `output_path` y retorna su ruta.
+        """
+        image = self._load_image(source_path)
+        if model_name:
+            self.classifier.set_active_model(model_name)
+        breed, score = self.classify_detected_dog(image)
+        payload = ClassifyResult(
+            source_path=source_path,
+            model=model_name or self.classifier.active_model_name,
+            breed=breed,
+            score=round(float(score), 4),
+        )
+        output_path.mkdir(parents=True, exist_ok=True)
+        result_file = output_path / f"result-{uuid4()}.json"
+        result_file.write_text(
+            json.dumps(payload.model_dump(), ensure_ascii=True, indent=2),
+            encoding="utf-8",
+        )
+        return str(result_file)
 
     def predict(self, source_path: str, output_path: Path) -> str:
         """Flujo completo: deteccion -> bounding boxes -> recortes -> clasificacion.

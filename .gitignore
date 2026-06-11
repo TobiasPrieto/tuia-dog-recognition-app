@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 output/*
 !output/.gitkeep
+src/output/
 models/*
 !models/.gitkeep
 *.pth

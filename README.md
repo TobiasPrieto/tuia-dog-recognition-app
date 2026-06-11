@@ -28,6 +28,18 @@ justificada en el informe.
 
 Cada funcion tiene su docstring con el comportamiento esperado y sugerencias.
 
+### Alcance del trabajo del estudiante
+
+- **Etapas 1 y 3**: el trabajo se limita a completar las funciones indicadas (pocas y
+  pequeñas); toda la infraestructura, la orquestacion y el frontend ya estan provistos
+  y no deben modificarse.
+- **Etapas 2 y 4**: ademas de completar las funciones indicadas, el estudiante debera
+  **entrenar sus propios modelos** y realizar un **pequeño estudio de resultados**
+  (metricas, comparaciones, analisis de errores y optimizacion). Ambas etapas se
+  trabajan en **Google Colab** con las notebooks provistas:
+  - `etapa2_colab.ipynb`: entrenamiento y comparacion de modelos.
+  - `etapa4_colab.ipynb`: evaluacion del pipeline, optimizacion y anotacion automatica.
+
 ## Objetivo del backend
 
 API asincronica en Python que permite:
@@ -86,8 +98,9 @@ tp2/
 │   └── embeddings.json             # base vectorial JSON (si USE_PGVECTOR=false)
 ├── models/                         # checkpoints entrenados (no se versionan)
 ├── output/
-├── train.ipynb                     # notebook de experimentacion
 ├── informe.ipynb                   # informe tecnico
+├── etapa2_colab.ipynb              # Etapa 2: dataset, preprocesamiento y entrenamiento (Google Colab)
+├── etapa4_colab.ipynb              # Etapa 4: evaluacion y optimizacion (Google Colab)
 ├── requirements.txt
 ├── Dockerfile
 ├── Dockerfile.frontend
@@ -116,8 +129,9 @@ O descargarlo manualmente y descomprimir `train/`, `valid/` y `test/` dentro de 
 
 ## Configura tus modelos
 
-Entrena tus modelos (Etapa 2) y guardalos dentro de la carpeta `models`. Por defecto, el
-modulo soporta modelos construidos con pytorch validando la extension **.pth**.
+Entrena tus modelos (Etapa 2) en Google Colab con `etapa2_colab.ipynb`, descarga los
+checkpoints y guardalos dentro de la carpeta `models`. Por defecto, el modulo soporta
+modelos construidos con pytorch validando la extension **.pth**.
 
 Si eligen utilizar otro framework, pueden exportarlo a formato **.onnx**
 
@@ -263,8 +277,9 @@ uvicorn frontend.app:app --port 8080
 2. Indexa el dataset en la base vectorial: `python scripts/build_index.py --split train`
    (desde la raiz del repo).
 3. Proba la busqueda por similitud desde el frontend (pestaña Etapa 1).
-4. Continua con las Etapas 2, 3 y 4. Documenta los experimentos en `train.ipynb` y el
-   informe en `informe.ipynb`.
+4. Continua con las Etapas 2, 3 y 4. La Etapa 2 (dataset, preprocesamiento y
+   entrenamiento) se trabaja en `etapa2_colab.ipynb` y la Etapa 4 en `etapa4_colab.ipynb`;
+   el informe se documenta en `informe.ipynb`.
 
 ## Scripts provistos
 
@@ -278,7 +293,7 @@ python scripts/download_dataset.py
 # Indexar el dataset en la base vectorial (requiere Etapa 1 implementada)
 python scripts/build_index.py --split train
 
-# Entrenar y evaluar el clasificador (requiere Etapa 2 implementada)
+# Entrenar y evaluar el clasificador localmente (alternativa a etapa2_colab.ipynb)
 python scripts/train_classifier.py --model resnet18_finetuned
 
 # Generar anotaciones automaticas (requiere Etapas 3 y 4 implementadas)
@@ -305,6 +320,7 @@ No hardcodear parametros. Configurar mediante `.env`:
 |----------|-------------|
 | `POST /upload` | Sube una imagen al servidor |
 | `POST /search` | Etapa 1: busqueda por similitud (acepta `model` y `top_k`) |
+| `POST /classify` | Etapa 2: clasificacion con el modelo entrenado |
 | `POST /detect` | Etapa 3: deteccion + clasificacion |
 | `GET /status/{job_id}` | Estado del procesamiento asincronico |
 | `GET /models` | Modelos de embeddings disponibles |
@@ -318,19 +334,48 @@ No hardcodear parametros. Configurar mediante `.env`:
 4. Persistencia configurable en JSON o PostgreSQL + pgvector (`USE_PGVECTOR`)
 5. Funciones auxiliares de evaluacion (`lib/evaluation/metrics.py`): NDCG@10, IoU, AP/mAP, precision/recall/F1, specificity
 6. Herramientas de visualizacion (`lib/visualization/draw.py`)
-7. Frontend Gradio con pestañas para Etapa 1 (imagen consultada, top K similares, raza predicha)
-   y Etapa 3 (bounding boxes, razas y scores)
+7. Frontend Gradio con una pestaña por etapa: Etapa 1 (imagen consultada, top K similares,
+   raza predicha, seleccion de modelo), Etapa 2 (clasificacion supervisada con el modelo
+   entrenado) y Etapa 3 (bounding boxes, razas y scores)
 
 Las funciones de cada etapa estan marcadas con `NotImplementedError` y deben ser completadas
 por el equipo para que el pipeline funcione end-to-end.
 
-## Evaluacion del pipeline (Etapa 4)
+## Etapas 2 y 4 en Google Colab
 
-- Construir en `data/eval` un conjunto de al menos **10 imagenes complejas** anotadas
-  manualmente (bounding boxes + raza).
-- Calcular mAP, IoU, precision, recall y F1 con `evaluate_pipeline()`.
-- Elegir una estrategia de optimizacion (cuantizacion INT8 o exportacion ONNX/TensorRT) y
-  comparar tiempo de inferencia, uso de memoria y precision con `optimize_model()`.
+El entrenamiento (Etapa 2) y la Etapa 4 se trabajan en **Google Colab** (subir las
+notebooks a Colab o abrirlas desde GitHub) para aprovechar la GPU. En ambas, ademas de
+las funciones a implementar, se espera un pequeño estudio de resultados documentado.
+
+### Etapa 2: `etapa2_colab.ipynb`
+
+Todo el trabajo de entrenamiento se hace en esta notebook:
+
+1. Implementar `train_classifier`, `evaluate_classifier` y `extract_custom_embedding`
+   en el fork y commitearlas.
+2. En Colab: clonar el fork, descargar el dataset, analizar su distribucion y definir los
+   splits, justificar el preprocesamiento y el data augmentation, entrenar (ResNet18
+   fine-tuned y, opcionalmente, la CNN propia), evaluar (accuracy, precision, recall,
+   specificity, F1, matriz de confusion, curvas) y realizar el estudio comparativo entre
+   modelos.
+3. Descargar los checkpoints a `models/` del entorno local (la aplicacion los usa en las
+   pestañas Etapa 1 y 2) y publicarlos en un link de solo lectura publico.
+
+### Etapa 4: `etapa4_colab.ipynb`
+
+Flujo:
+
+1. Implementar las funciones de la Etapa 4 en `src/lib/services/pipeline_service.py` y
+   commitearlas en el fork.
+2. Construir en `data/eval` un conjunto de al menos **10 imagenes complejas** anotadas
+   manualmente (bounding boxes + raza) y versionarlo en el fork.
+3. En Colab: clonar el fork, instalar dependencias, descargar los checkpoints entrenados
+   (link publico) y ejecutar `evaluate_pipeline()` (mAP, IoU, precision, recall, F1),
+   `optimize_model()` (cuantizacion INT8 u ONNX/TensorRT, comparando tiempo de inferencia,
+   memoria y precision) y `generate_annotations()` (YOLOv5 y COCO).
+
+Las mismas funciones tambien pueden ejecutarse localmente con
+`scripts/generate_annotations.py` o desde la API una vez implementadas.
 
 ## Notas importantes
 
@@ -348,7 +393,7 @@ por el equipo para que el pipeline funcione end-to-end.
 - Pull Request abierto contra el repositorio original provisto por la catedra
   (sera evaluado **sin mergear** a main o el branch principal).
 - Informe en IPYNB (`informe.ipynb`).
-- Notebook de experimentacion (`train.ipynb`).
+- Notebooks de Colab ejecutadas, con sus salidas (`etapa2_colab.ipynb` y `etapa4_colab.ipynb`).
 
 Para que el trabajo practico se considere aprobado, el sistema debe andar sin errores
 corriendo los siguientes comandos :

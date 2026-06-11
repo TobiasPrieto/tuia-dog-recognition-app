@@ -20,6 +20,10 @@ MODEL_CHOICES = [
     ).split(",")
     if m.strip()
 ]
+CLASSIFIER_CHOICES = [m for m in MODEL_CHOICES if m != "baseline"] or [
+    "resnet18_finetuned",
+    "cnn_custom",
+]
 
 
 def _client() -> httpx.Client:
@@ -113,6 +117,28 @@ def start_search(image: np.ndarray | None, model: str, top_k: float) -> tuple[st
         return "", f"Error: {exc}"
 
 
+def start_classify(image: np.ndarray | None, model: str) -> tuple[str, str]:
+    try:
+        path = upload_numpy_image(image)
+        with _client() as c:
+            r = c.post(
+                f"{API_BASE}/classify",
+                json={"source_path": path, "model": model},
+            )
+            r.raise_for_status()
+            job_id = r.json()["job_id"]
+        msg = (
+            f"Clasificacion encolada. **job_id:** `{job_id}`\n\n"
+            f"Modelo entrenado: `{model}`\n\n"
+            "Pulsa **Consultar resultado de este job** o ve a **Estado y resultados**."
+        )
+        return job_id, msg
+    except httpx.HTTPStatusError as exc:
+        return "", f"Error HTTP: {exc.response.status_code} — {exc.response.text[:500]}"
+    except Exception as exc:
+        return "", f"Error: {exc}"
+
+
 def start_detect(image: np.ndarray | None) -> tuple[str, str]:
     try:
         path = upload_numpy_image(image)
@@ -152,6 +178,20 @@ def _render_search(data: dict[str, Any], source_image_url: str | None, links_md:
     )
     pretty = json.dumps(data, ensure_ascii=False, indent=2)
     return query_rgb, gallery, pretty, extra, "**Estado:** completado (busqueda por similitud)."
+
+
+def _render_classify(data: dict[str, Any], source_image_url: str | None, links_md: str):
+    img_bgr = _download_image(source_image_url)
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB) if img_bgr is not None else None
+    breed = data.get("breed", "?")
+    score = data.get("score", 0.0)
+    model = data.get("model", "?")
+    extra = (
+        f"**Raza predicha:** {breed} (score: {score})\n\n"
+        f"**Modelo entrenado:** `{model}`\n\n{links_md}"
+    )
+    pretty = json.dumps(data, ensure_ascii=False, indent=2)
+    return img_rgb, [], pretty, extra, "**Estado:** completado (clasificacion supervisada)."
 
 
 def _render_detect(data: dict[str, Any], source_image_url: str | None, links_md: str):
@@ -224,6 +264,8 @@ def consult_status(job_id: str) -> tuple[np.ndarray | None, list, str, str, str]
     result_type = data.get("type")
     if result_type == "search":
         return _render_search(data, source_image_url, links_md)
+    if result_type == "classify":
+        return _render_classify(data, source_image_url, links_md)
     if result_type == "detect":
         return _render_detect(data, source_image_url, links_md)
 
@@ -240,7 +282,9 @@ def build_ui() -> gr.Blocks:
             "Sube imagenes, obtén **job_id** y consulta el estado. "
             "Las descargas usan los endpoints `/files/output/...` y `/files/data/...`. "
             "**Etapa 1:** imagen consultada, top K similares y raza predicha. "
-            "**Etapa 3:** bounding boxes, raza y scores de confianza."
+            "**Etapa 2:** clasificacion supervisada con el modelo entrenado. "
+            "**Etapa 3:** bounding boxes, raza y scores de confianza. "
+            "**Etapa 4:** se trabaja en Google Colab (`etapa4_colab.ipynb`)."
         )
 
         job_id_shared = gr.Textbox(label="Job ID (ultimo o manual)", lines=1)
@@ -257,6 +301,22 @@ def build_ui() -> gr.Blocks:
             search_btn = gr.Button("Buscar similares", variant="primary")
             search_log = gr.Markdown()
             search_quick = gr.Button("Consultar resultado de este job")
+
+        with gr.Tab("Clasificacion supervisada (Etapa 2)"):
+            gr.Markdown(
+                "Llama a `POST /upload` y `POST /classify`. Clasifica la imagen completa "
+                "con el modelo entrenado en la Etapa 2 (reutiliza `classify_detected_dog`, "
+                "por lo que requiere tambien esa funcion de la Etapa 3)."
+            )
+            cls_in = gr.Image(label="Imagen de un perro", type="numpy", height=320)
+            cls_model = gr.Dropdown(
+                choices=CLASSIFIER_CHOICES,
+                value=CLASSIFIER_CHOICES[0],
+                label="Modelo entrenado",
+            )
+            cls_btn = gr.Button("Clasificar", variant="primary")
+            cls_log = gr.Markdown()
+            cls_quick = gr.Button("Consultar resultado de este job")
 
         with gr.Tab("Deteccion y clasificacion (Etapa 3)"):
             gr.Markdown("Llama a `POST /upload` y `POST /detect`.")
@@ -281,6 +341,12 @@ def build_ui() -> gr.Blocks:
             jid, msg = start_search(img, model, top_k)
             return jid, msg, jid, None, [], ""
 
+        def _on_classify(
+            img: np.ndarray | None, model: str
+        ) -> tuple[str, str, str, None, list, str]:
+            jid, msg = start_classify(img, model)
+            return jid, msg, jid, None, [], ""
+
         def _on_detect(img: np.ndarray | None) -> tuple[str, str, str, None, list, str]:
             jid, msg = start_detect(img)
             return jid, msg, jid, None, [], ""
@@ -289,6 +355,11 @@ def build_ui() -> gr.Blocks:
             _on_search,
             [search_in, search_model, search_topk],
             [job_id_shared, search_log, status_in, vis_out, gallery_out, json_out],
+        )
+        cls_btn.click(
+            _on_classify,
+            [cls_in, cls_model],
+            [job_id_shared, cls_log, status_in, vis_out, gallery_out, json_out],
         )
         det_btn.click(
             _on_detect,
@@ -306,6 +377,11 @@ def build_ui() -> gr.Blocks:
             [vis_out, gallery_out, json_out, extra_md, status_line],
         )
         search_quick.click(
+            _consult,
+            job_id_shared,
+            [vis_out, gallery_out, json_out, extra_md, status_line],
+        )
+        cls_quick.click(
             _consult,
             job_id_shared,
             [vis_out, gallery_out, json_out, extra_md, status_line],

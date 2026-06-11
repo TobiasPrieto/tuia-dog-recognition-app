@@ -14,6 +14,7 @@ from lib.config import settings
 from lib.files import file_to_public_url, safe_file_under
 from lib.schemas import (
     AsyncTaskCreated,
+    ClassifyRequest,
     DetectRequest,
     ModelsResponse,
     SearchRequest,
@@ -45,6 +46,7 @@ detection_service = services.detection
 pipeline_service = services.pipeline
 
 EMBEDDING_MODELS = ("baseline", "resnet18_finetuned", "cnn_custom")
+CLASSIFIER_MODELS = ("resnet18_finetuned", "cnn_custom")
 
 
 def _embedding_extractor(model_name: str):
@@ -134,6 +136,29 @@ async def search(payload: SearchRequest, response: Response) -> AsyncTaskCreated
             embedding_fn=extractor,
             model_name=model_name,
             top_k=payload.top_k,
+        )
+
+    task_manager.schedule(job_id, _process())
+    return AsyncTaskCreated(job_id=job_id)
+
+
+@router.post("/classify", response_model=AsyncTaskCreated)
+async def classify(payload: ClassifyRequest, response: Response) -> AsyncTaskCreated:
+    """Etapa 2: clasificacion supervisada de una imagen con el modelo entrenado."""
+    response.status_code = status.HTTP_202_ACCEPTED
+    model_name = payload.model or "resnet18_finetuned"
+    if model_name not in CLASSIFIER_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown model '{model_name}'. Expected one of: {CLASSIFIER_MODELS}",
+        )
+    job_id = task_manager.create_job()
+
+    async def _process() -> str:
+        await asyncio.sleep(0.05)
+        logger.info("Classifying image: %s (model=%s)", payload.source_path, model_name)
+        return detection_service.classify_image(
+            payload.source_path, settings.output_path, model_name
         )
 
     task_manager.schedule(job_id, _process())

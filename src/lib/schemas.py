@@ -47,6 +47,24 @@ class SearchResult(BaseModel):
     neighbors: list[Neighbor]
 
 
+class ClassifyRequest(BaseModel):
+    source_path: str
+    model: Optional[str] = Field(
+        default=None,
+        description="resnet18_finetuned | cnn_custom (default: resnet18_finetuned).",
+    )
+
+
+class ClassifyResult(BaseModel):
+    """Resultado de la Etapa 2: raza predicha por el clasificador entrenado."""
+
+    type: Literal["classify"] = "classify"
+    source_path: str
+    model: str
+    breed: str
+    score: float
+
+
 class DetectRequest(BaseModel):
     source_path: str
 
