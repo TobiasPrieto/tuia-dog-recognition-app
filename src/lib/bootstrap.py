@@ -9,7 +9,6 @@ from typing import Callable, Optional, Union
 from lib.config import Settings
 from lib.services.classifier_service import ClassifierService
 from lib.services.detection_service import DetectionService
-from lib.services.pipeline_service import PipelineService
 from lib.services.similarity_service import SimilarityService
 from lib.storage.base import EmbeddingStoreProtocol
 from lib.storage.embedding_store import EmbeddingStore
@@ -26,7 +25,6 @@ class ServiceContainer:
     similarity: SimilarityService
     classifier: ClassifierService
     detection: DetectionService
-    pipeline: PipelineService
 
 
 def build_store(settings: Settings) -> StoreType:
@@ -85,14 +83,6 @@ def build_detection(settings: Settings, classifier: ClassifierService) -> Detect
     )
 
 
-def build_pipeline(settings: Settings, detection: DetectionService) -> PipelineService:
-    return PipelineService(
-        detection=detection,
-        eval_path=settings.eval_path,
-        output_path=settings.output_path,
-    )
-
-
 def build_services(
     settings: Settings,
     url_resolver: Optional[UrlResolver] = None,
@@ -101,11 +91,9 @@ def build_services(
     classifier = build_classifier(settings)
     similarity = build_similarity(settings, store, url_resolver)
     detection = build_detection(settings, classifier)
-    pipeline = build_pipeline(settings, detection)
     return ServiceContainer(
         store=store,
         similarity=similarity,
         classifier=classifier,
         detection=detection,
-        pipeline=pipeline,
     )

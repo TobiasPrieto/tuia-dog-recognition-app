@@ -283,8 +283,7 @@ def build_ui() -> gr.Blocks:
             "Las descargas usan los endpoints `/files/output/...` y `/files/data/...`. "
             "**Etapa 1:** imagen consultada, top K similares y raza predicha. "
             "**Etapa 2:** clasificacion supervisada con el modelo entrenado. "
-            "**Etapa 3:** bounding boxes, raza y scores de confianza. "
-            "**Etapa 4:** se trabaja en Google Colab (`etapa4_colab.ipynb`)."
+            "**Etapa 3:** bounding boxes, raza y scores de confianza."
         )
 
         job_id_shared = gr.Textbox(label="Job ID (ultimo o manual)", lines=1)

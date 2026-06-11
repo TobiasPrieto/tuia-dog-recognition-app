@@ -43,7 +43,6 @@ class Settings(BaseSettings):
     embeddings_path: Path = Path(os.getenv("EMBEDDINGS_PATH", "data/embeddings.json"))
     data_path: Path = Path(os.getenv("DATA_PATH", "data"))
     dataset_path: Path = Path(os.getenv("DATASET_PATH", "data/dataset"))
-    eval_path: Path = Path(os.getenv("EVAL_PATH", "data/eval"))
     output_path: Path = Path(os.getenv("OUTPUT_PATH", "output"))
     max_workers: int = os.getenv("MAX_WORKERS", 2)
 

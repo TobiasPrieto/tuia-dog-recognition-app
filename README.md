@@ -22,9 +22,6 @@ justificada en el informe.
 | 2 | `extract_custom_embedding(image)` | `src/lib/services/classifier_service.py` |
 | 3 | `detect_dogs(image)` | `src/lib/services/detection_service.py` |
 | 3 | `classify_detected_dog(crop)` | `src/lib/services/detection_service.py` |
-| 4 | `evaluate_pipeline()` | `src/lib/services/pipeline_service.py` |
-| 4 | `optimize_model()` | `src/lib/services/pipeline_service.py` |
-| 4 | `generate_annotations(folder_path, output_format)` | `src/lib/services/pipeline_service.py` |
 
 Cada funcion tiene su docstring con el comportamiento esperado y sugerencias.
 
@@ -33,12 +30,11 @@ Cada funcion tiene su docstring con el comportamiento esperado y sugerencias.
 - **Etapas 1 y 3**: el trabajo se limita a completar las funciones indicadas (pocas y
   pequeñas); toda la infraestructura, la orquestacion y el frontend ya estan provistos
   y no deben modificarse.
-- **Etapas 2 y 4**: ademas de completar las funciones indicadas, el estudiante debera
+- **Etapa 2**: ademas de completar las funciones indicadas, el estudiante debera
   **entrenar sus propios modelos** y realizar un **pequeño estudio de resultados**
-  (metricas, comparaciones, analisis de errores y optimizacion). Ambas etapas se
-  trabajan en **Google Colab** con las notebooks provistas:
+  (metricas, comparaciones y analisis de errores). Se trabaja en **Google Colab**
+  con la notebook provista:
   - `etapa2_colab.ipynb`: entrenamiento y comparacion de modelos.
-  - `etapa4_colab.ipynb`: evaluacion del pipeline, optimizacion y anotacion automatica.
 
 ## Objetivo del backend
 
@@ -75,14 +71,13 @@ tp2/
 │       ├── files.py
 │       ├── schemas.py
 │       ├── evaluation/
-│       │   └── metrics.py          # NDCG@10, IoU, AP/mAP, precision/recall/F1 (provisto)
+│       │   └── metrics.py          # NDCG@10, precision/recall/F1, specificity (provisto)
 │       ├── visualization/
 │       │   └── draw.py             # dibujo de bounding boxes (provisto)
 │       ├── services/
 │       │   ├── similarity_service.py   # Etapa 1
 │       │   ├── classifier_service.py   # Etapa 2
 │       │   ├── detection_service.py    # Etapa 3
-│       │   ├── pipeline_service.py     # Etapa 4
 │       │   └── task_manager.py
 │       └── storage/
 │           ├── embedding_store.py      # base vectorial JSON
@@ -90,17 +85,14 @@ tp2/
 ├── scripts/
 │   ├── download_dataset.py         # descarga el dataset de Kaggle
 │   ├── build_index.py              # indexa el dataset en la base vectorial
-│   ├── train_classifier.py         # entrena/evalua el clasificador (Etapa 2)
-│   └── generate_annotations.py     # anotacion automatica YOLO/COCO (Etapa 4)
+│   └── train_classifier.py         # entrena/evalua el clasificador (Etapa 2)
 ├── data/
 │   ├── dataset/                    # 70 Dog Breeds Image Dataset (no se versiona)
-│   ├── eval/                       # conjunto de prueba anotado (Etapa 4)
 │   └── embeddings.json             # base vectorial JSON (si USE_PGVECTOR=false)
 ├── models/                         # checkpoints entrenados (no se versionan)
 ├── output/
 ├── informe.ipynb                   # informe tecnico
 ├── etapa2_colab.ipynb              # Etapa 2: dataset, preprocesamiento y entrenamiento (Google Colab)
-├── etapa4_colab.ipynb              # Etapa 4: evaluacion y optimizacion (Google Colab)
 ├── requirements.txt
 ├── Dockerfile
 ├── Dockerfile.frontend
@@ -277,9 +269,9 @@ uvicorn frontend.app:app --port 8080
 2. Indexa el dataset en la base vectorial: `python scripts/build_index.py --split train`
    (desde la raiz del repo).
 3. Proba la busqueda por similitud desde el frontend (pestaña Etapa 1).
-4. Continua con las Etapas 2, 3 y 4. La Etapa 2 (dataset, preprocesamiento y
-   entrenamiento) se trabaja en `etapa2_colab.ipynb` y la Etapa 4 en `etapa4_colab.ipynb`;
-   el informe se documenta en `informe.ipynb`.
+4. Continua con las Etapas 2 y 3. La Etapa 2 (dataset, preprocesamiento y
+   entrenamiento) se trabaja en `etapa2_colab.ipynb`; el informe se documenta
+   en `informe.ipynb`.
 
 ## Scripts provistos
 
@@ -295,10 +287,6 @@ python scripts/build_index.py --split train
 
 # Entrenar y evaluar el clasificador localmente (alternativa a etapa2_colab.ipynb)
 python scripts/train_classifier.py --model resnet18_finetuned
-
-# Generar anotaciones automaticas (requiere Etapas 3 y 4 implementadas)
-python scripts/generate_annotations.py data/eval --format yolo
-python scripts/generate_annotations.py data/eval --format coco
 ```
 
 ## Configuracion
@@ -332,7 +320,7 @@ No hardcodear parametros. Configurar mediante `.env`:
 2. Seleccion dinamica del modelo de embeddings: `baseline`, `resnet18_finetuned`, `cnn_custom`
 3. Busqueda por similitud configurable (`cosine` o `l2`) con manejo de desconocidos via `SIMILARITY_THRESHOLD`
 4. Persistencia configurable en JSON o PostgreSQL + pgvector (`USE_PGVECTOR`)
-5. Funciones auxiliares de evaluacion (`lib/evaluation/metrics.py`): NDCG@10, IoU, AP/mAP, precision/recall/F1, specificity
+5. Funciones auxiliares de evaluacion (`lib/evaluation/metrics.py`): NDCG@10, precision/recall/F1, specificity
 6. Herramientas de visualizacion (`lib/visualization/draw.py`)
 7. Frontend Gradio con una pestaña por etapa: Etapa 1 (imagen consultada, top K similares,
    raza predicha, seleccion de modelo), Etapa 2 (clasificacion supervisada con el modelo
@@ -341,11 +329,11 @@ No hardcodear parametros. Configurar mediante `.env`:
 Las funciones de cada etapa estan marcadas con `NotImplementedError` y deben ser completadas
 por el equipo para que el pipeline funcione end-to-end.
 
-## Etapas 2 y 4 en Google Colab
+## Etapa 2 en Google Colab
 
-El entrenamiento (Etapa 2) y la Etapa 4 se trabajan en **Google Colab** (subir las
-notebooks a Colab o abrirlas desde GitHub) para aprovechar la GPU. En ambas, ademas de
-las funciones a implementar, se espera un pequeño estudio de resultados documentado.
+El entrenamiento (Etapa 2) se trabaja en **Google Colab** (subir la notebook a Colab o
+abrirla desde GitHub) para aprovechar la GPU. Ademas de las funciones a implementar,
+se espera un pequeño estudio de resultados documentado.
 
 ### Etapa 2: `etapa2_colab.ipynb`
 
@@ -360,22 +348,6 @@ Todo el trabajo de entrenamiento se hace en esta notebook:
    modelos.
 3. Descargar los checkpoints a `models/` del entorno local (la aplicacion los usa en las
    pestañas Etapa 1 y 2) y publicarlos en un link de solo lectura publico.
-
-### Etapa 4: `etapa4_colab.ipynb`
-
-Flujo:
-
-1. Implementar las funciones de la Etapa 4 en `src/lib/services/pipeline_service.py` y
-   commitearlas en el fork.
-2. Construir en `data/eval` un conjunto de al menos **10 imagenes complejas** anotadas
-   manualmente (bounding boxes + raza) y versionarlo en el fork.
-3. En Colab: clonar el fork, instalar dependencias, descargar los checkpoints entrenados
-   (link publico) y ejecutar `evaluate_pipeline()` (mAP, IoU, precision, recall, F1),
-   `optimize_model()` (cuantizacion INT8 u ONNX/TensorRT, comparando tiempo de inferencia,
-   memoria y precision) y `generate_annotations()` (YOLOv5 y COCO).
-
-Las mismas funciones tambien pueden ejecutarse localmente con
-`scripts/generate_annotations.py` o desde la API una vez implementadas.
 
 ## Notas importantes
 
@@ -393,7 +365,7 @@ Las mismas funciones tambien pueden ejecutarse localmente con
 - Pull Request abierto contra el repositorio original provisto por la catedra
   (sera evaluado **sin mergear** a main o el branch principal).
 - Informe en IPYNB (`informe.ipynb`).
-- Notebooks de Colab ejecutadas, con sus salidas (`etapa2_colab.ipynb` y `etapa4_colab.ipynb`).
+- Notebook de Colab ejecutada, con sus salidas (`etapa2_colab.ipynb`).
 
 Para que el trabajo practico se considere aprobado, el sistema debe andar sin errores
 corriendo los siguientes comandos :

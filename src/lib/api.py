@@ -43,7 +43,6 @@ services = build_services(settings, url_resolver=_public_url)
 similarity_service = services.similarity
 classifier_service = services.classifier
 detection_service = services.detection
-pipeline_service = services.pipeline
 
 EMBEDDING_MODELS = ("baseline", "resnet18_finetuned", "cnn_custom")
 CLASSIFIER_MODELS = ("resnet18_finetuned", "cnn_custom")
