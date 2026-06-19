@@ -6,13 +6,23 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
+import torch
+import torchvision.models as models
 import cv2
+from PIL import Image
 import numpy as np
 
 from lib.schemas import EmbeddingRecord, Neighbor, SearchResult
 from lib.storage.base import EmbeddingStoreProtocol
 
 logger = logging.getLogger(__name__)
+
+weights = models.ConvNeXt_Tiny_Weights.DEFAULT
+model = models.convnext_tiny(weights=weights)
+
+model.classifier[2] = torch.nn.Identity()
+model.eval()
+preprocess = weights.transforms()
 
 
 class SimilarityService:
@@ -68,7 +78,15 @@ class SimilarityService:
           - Recordar que la imagen llega en BGR (OpenCV).
         Retorna una lista de floats de dimension EMBEDDING_DIM.
         """
-        raise NotImplementedError("Etapa 1: implementar extract_embedding")
+
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image_pil = Image.fromarray(image_rgb)
+        image_tensor = preprocess(image_pil).unsqueeze(0)
+
+        with torch.inference_mode():
+            embedding = model(image_tensor).squeeze(0)
+
+        return embedding.cpu().tolist()
 
     def search_similar_images(self, embedding: list[float], top_k: int) -> list[Neighbor]:
         """
