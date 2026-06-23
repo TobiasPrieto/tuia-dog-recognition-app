@@ -17,3 +17,4 @@ data/dataset/*
 runs/
 .DS_Store
 testBDD.ipynb
+data/
