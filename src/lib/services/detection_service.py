@@ -7,6 +7,10 @@ from uuid import uuid4
 
 import cv2
 import numpy as np
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+from ultralytics import YOLO
 
 from lib.schemas import ClassifyResult, DetectResult, DogDetection
 from lib.services.classifier_service import ClassifierService
@@ -34,8 +38,20 @@ class DetectionService:
     ) -> None:
         self.classifier = classifier
         self.yolo_model_name = yolo_model
+        self.yolo_model = YOLO(self.yolo_model_name)
         self.conf_threshold = conf_threshold
         self.dog_class_id = dog_class_id
+        self.class_names = self._load_class_names()
+        self.classification_preprocess = transforms.Compose(
+            [
+                transforms.Resize(self.classifier.image_size),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ]
+        )
 
     @staticmethod
     def _clip_xyxy(
@@ -58,24 +74,55 @@ class DetectionService:
         # BGR uint8 (convencion OpenCV / ultralytics)
         return image
 
+    def _load_class_names(self) -> list[str]:
+        for split in ("train", "valid", "test"):
+            split_path = self.classifier.dataset_path / split
+            if split_path.exists():
+                class_names = sorted(path.name for path in split_path.iterdir() if path.is_dir())
+                if class_names:
+                    return class_names
+        return []
+
     # ------------------------------------------------------------------
     # Etapa 3: funciones a implementar
     # ------------------------------------------------------------------
 
     def detect_dogs(self, image: np.ndarray) -> list[tuple[tuple[int, int, int, int], float]]:
         """
-        Detecta todos los perros presentes en la imagen usando un modelo YOLO
-        pre-entrenado (ej: YOLOv8n via ultralytics). No es necesario entrenar
-        el detector.
+        Detecta todos los perros presentes en la imagen usando YOLOv8.
 
-        Sugerencias:
-          - self.yolo_model_name, self.conf_threshold y self.dog_class_id
-            (clase 'dog' = 16 en COCO) vienen de la configuracion (.env).
-          - Debe funcionar con un perro, multiples perros y escenas complejas.
+        Retorna una lista con el formato:
+            [((x1, y1, x2, y2), confidence), ...]
 
-        Retorna una lista de ((x1, y1, x2, y2), confidence) en pixeles.
+        Las coordenadas están expresadas en píxeles.
         """
-        raise NotImplementedError("Etapa 3: implementar detect_dogs")
+
+        resultados = self.yolo_model.predict(
+            source=image,
+            classes=[self.dog_class_id],
+            conf=self.conf_threshold,
+            device="cpu",
+            verbose=False,
+        )
+
+        cajas = resultados[0].boxes
+
+        if cajas is None or len(cajas) == 0:
+            return []
+
+        perros_detectados = []
+
+        for coordenadas, confianza in zip(cajas.xyxy, cajas.conf):
+            x1, y1, x2, y2 = map(int, coordenadas.tolist())
+
+            perros_detectados.append(
+                (
+                    (x1, y1, x2, y2),
+                    float(confianza.item()),
+                )
+            )
+
+        return perros_detectados
 
     def classify_detected_dog(self, crop: np.ndarray) -> tuple[str, float]:
         """
@@ -84,7 +131,31 @@ class DetectionService:
 
         El recorte llega en BGR (OpenCV). Retorna (raza, score).
         """
-        raise NotImplementedError("Etapa 3: implementar classify_detected_dog")
+        if crop is None or crop.size == 0:
+            return "unknown", 0.0
+
+        model = self.classifier._prepare_model()
+        model.eval()
+
+        crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(crop_rgb)
+        input_tensor = self.classification_preprocess(pil_img).unsqueeze(0)
+
+        with torch.inference_mode():
+            output = model(input_tensor)
+            probabilities = torch.nn.functional.softmax(output.squeeze(0), dim=0)
+            top_prob, top_cat = torch.max(probabilities, dim=0)
+
+        class_idx = int(top_cat.item())
+        if class_idx >= len(self.class_names):
+            logger.warning(
+                "Predicted class index %s but only %s class names were found.",
+                class_idx,
+                len(self.class_names),
+            )
+            return "unknown", float(top_prob.item())
+
+        return self.class_names[class_idx], float(top_prob.item())
 
     # ------------------------------------------------------------------
     # Orquestacion provista
