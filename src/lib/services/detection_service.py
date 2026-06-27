@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import torch
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as F
 from PIL import Image
 from ultralytics import YOLO
 
@@ -16,6 +17,23 @@ from lib.schemas import ClassifyResult, DetectResult, DogDetection
 from lib.services.classifier_service import ClassifierService
 
 logger = logging.getLogger(__name__)
+
+
+class SquarePad:
+    """Agrega padding para convertir una imagen PIL rectangular en cuadrada."""
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        width, height = image.size
+        max_side = max(width, height)
+        horizontal_padding = max_side - width
+        vertical_padding = max_side - height
+
+        left = horizontal_padding // 2
+        right = horizontal_padding - left
+        top = vertical_padding // 2
+        bottom = vertical_padding - top
+
+        return F.pad(image, (left, top, right, bottom), fill=0, padding_mode="constant")
 
 
 class DetectionService:
@@ -42,9 +60,11 @@ class DetectionService:
         self.conf_threshold = conf_threshold
         self.dog_class_id = dog_class_id
         self.class_names = self._load_class_names()
+        self.crop_margin_ratio = 0.15
         self.classification_preprocess = transforms.Compose(
             [
-                transforms.Resize(self.classifier.image_size),
+                SquarePad(),
+                transforms.Resize((self.classifier.image_size, self.classifier.image_size)),
                 transforms.ToTensor(),
                 transforms.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -66,6 +86,29 @@ class DetectionService:
         if y2 <= y1:
             y2 = min(y1 + 1, height)
         return x1, y1, x2, y2
+
+    def _add_margin_xyxy(
+        self,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        height: int,
+        width: int,
+    ) -> tuple[int, int, int, int]:
+        box_width = x2 - x1
+        box_height = y2 - y1
+        margin_x = int(box_width * self.crop_margin_ratio)
+        margin_y = int(box_height * self.crop_margin_ratio)
+
+        return self._clip_xyxy(
+            x1 - margin_x,
+            y1 - margin_y,
+            x2 + margin_x,
+            y2 + margin_y,
+            height,
+            width,
+        )
 
     def _load_image(self, source_path: str) -> np.ndarray:
         image = cv2.imread(str(source_path))
@@ -199,7 +242,10 @@ class DetectionService:
         detections: list[DogDetection] = []
         for (box, det_score) in self.detect_dogs(image):
             x1, y1, x2, y2 = self._clip_xyxy(*[int(v) for v in box], height, width)
-            crop = image[y1:y2, x1:x2]
+            crop_x1, crop_y1, crop_x2, crop_y2 = self._add_margin_xyxy(
+                x1, y1, x2, y2, height, width
+            )
+            crop = image[crop_y1:crop_y2, crop_x1:crop_x2]
             breed, breed_score = self.classify_detected_dog(crop)
             detections.append(
                 DogDetection(
