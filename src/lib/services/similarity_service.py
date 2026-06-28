@@ -6,13 +6,23 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
+import torch
+import torchvision.models as models
 import cv2
+from PIL import Image
 import numpy as np
 
 from lib.schemas import EmbeddingRecord, Neighbor, SearchResult
 from lib.storage.base import EmbeddingStoreProtocol
 
 logger = logging.getLogger(__name__)
+
+weights = models.ConvNeXt_Tiny_Weights.DEFAULT
+model = models.convnext_tiny(weights=weights)
+
+model.classifier[2] = torch.nn.Identity()
+model.eval()
+preprocess = weights.transforms()
 
 
 class SimilarityService:
@@ -68,7 +78,15 @@ class SimilarityService:
           - Recordar que la imagen llega en BGR (OpenCV).
         Retorna una lista de floats de dimension EMBEDDING_DIM.
         """
-        raise NotImplementedError("Etapa 1: implementar extract_embedding")
+
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image_pil = Image.fromarray(image_rgb)
+        image_tensor = preprocess(image_pil).unsqueeze(0)
+
+        with torch.inference_mode():
+            embedding = model(image_tensor).squeeze(0)
+
+        return embedding.cpu().tolist()
 
     def search_similar_images(self, embedding: list[float], top_k: int) -> list[Neighbor]:
         """
@@ -81,7 +99,31 @@ class SimilarityService:
         Retorna una lista de Neighbor (path, breed, score) ordenada por score
         descendente.
         """
-        raise NotImplementedError("Etapa 1: implementar search_similar_images")
+        if top_k <= 0:
+            return []
+
+        metric = self.similarity_metric.lower()
+
+        # pgvector ya puede reducir los candidatos eficientemente para coseno.
+        # El protocolo base tambien contempla stores simples (como JSON), que
+        # solo exponen all(). Para L2 no usamos search(), porque el store
+        # pgvector provisto ordena exclusivamente por distancia coseno.
+        store_search = getattr(self.store, "search", None)
+        if metric == "cosine" and callable(store_search):
+            records = store_search(embedding, top_k)
+        else:
+            records = self.store.all()
+
+        neighbors = [
+            Neighbor(
+                path=record.path,
+                breed=record.breed,
+                score=self.similarity(embedding, record.embedding),
+            )
+            for record in records
+        ]
+        neighbors.sort(key=lambda neighbor: neighbor.score, reverse=True)
+        return neighbors[:top_k]
 
     def predict_breed_from_neighbors(self, results: list[Neighbor]) -> tuple[str, float]:
         """
@@ -91,7 +133,32 @@ class SimilarityService:
         Si el mejor score esta por debajo de self.similarity_threshold se
         considera "unknown". Retorna (raza, score).
         """
-        raise NotImplementedError("Etapa 1: implementar predict_breed_from_neighbors")
+        if not results:
+            return "unknown", 0.0
+
+        best_score = max(float(neighbor.score) for neighbor in results)
+        if best_score < self.similarity_threshold:
+            return "unknown", best_score
+
+        votes: dict[str, float] = {}
+        best_score_by_breed: dict[str, float] = {}
+        for neighbor in results:
+            score = float(neighbor.score)
+            votes[neighbor.breed] = votes.get(neighbor.breed, 0.0) + score
+            best_score_by_breed[neighbor.breed] = max(
+                best_score_by_breed.get(neighbor.breed, float("-inf")),
+                score,
+            )
+
+        predicted_breed = max(
+            votes,
+            key=lambda breed: (
+                votes[breed],
+                best_score_by_breed[breed],
+                breed,
+            ),
+        )
+        return predicted_breed, best_score_by_breed[predicted_breed]
 
     # ------------------------------------------------------------------
     # Helpers de similitud provistos

@@ -21,7 +21,7 @@ class PgVectorEmbeddingStore:
         dbname: str,
         user: str,
         password: str,
-        embedding_dim: int = 512,
+        embedding_dim: int = 768,
     ) -> None:
         self.embedding_dim = embedding_dim
         self.conn = connect(
@@ -118,7 +118,7 @@ class PgVectorEmbeddingStore:
                 """
                 SELECT id_imagen, embedding, path, breed, metadata
                 FROM embeddings
-                ORDER BY embedding <=> %s
+                ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
                 (query, k),

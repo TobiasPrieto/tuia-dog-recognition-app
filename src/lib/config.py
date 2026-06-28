@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     similarity_threshold: float = os.getenv("SIMILARITY_THRESHOLD", 0.55)
     top_k: int = os.getenv("TOP_K", 10)
     image_size: int = os.getenv("IMAGE_SIZE", 224)
-    embedding_dim: int = os.getenv("EMBEDDING_DIM", 512)
+    embedding_dim: int = os.getenv("EMBEDDING_DIM", 768)
 
     # Configuracion de YOLO (Etapa 3)
     yolo_model: str = os.getenv("YOLO_MODEL", "yolov8n.pt")
